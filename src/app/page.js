@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import confetti from "canvas-confetti";
 import Image from "next/image";
+import React from "react";
 
 export default function Home() {
 	const [noButtonPosition, setNoButtonPosition] = useState({ x: 0, y: 0 });
@@ -17,12 +18,175 @@ export default function Home() {
 	const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 	const [glitterTrail, setGlitterTrail] = useState([]);
 	const [sparkles, setSparkles] = useState([]);
+	const [isPlaying, setIsPlaying] = useState(false);
+	const [audioVolume, setAudioVolume] = useState(0.3);
+	const [showMusicNotification, setShowMusicNotification] = useState(false);
+	const [audioFileExists, setAudioFileExists] = useState(true);
+	const [autoplayAttempting, setAutoplayAttempting] = useState(false);
+
+	// Audio ref
+	const audioRef = React.useRef(null);
+	const playButtonRef = React.useRef(null);
 
 	useEffect(() => {
 		// Show gallery after a short delay for smooth animation
 		const timer = setTimeout(() => setShowGallery(true), 500);
 		return () => clearTimeout(timer);
 	}, []);
+
+	// Simulate click on play button when page mounts
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			if (playButtonRef.current && audioFileExists) {
+				playButtonRef.current.click();
+			}
+		}, 1000); // Wait 1 second for everything to load
+
+		return () => clearTimeout(timer);
+	}, [audioFileExists]);
+
+	// Audio controls
+	const toggleAudio = () => {
+		if (audioRef.current) {
+			// Check if audio file exists
+			if (!audioFileExists) {
+				alert(
+					"🎵 Please add the song 'Ceilings' by Lizzy McAlpine to public/assets/ceilings-lizzy-mcalpine.mp3"
+				);
+				return;
+			}
+
+			if (isPlaying) {
+				audioRef.current.pause();
+				// isPlaying will be set to false by the pause event listener
+			} else {
+				audioRef.current.play().catch((error) => {
+					console.log("Audio play failed:", error);
+					setAudioFileExists(false);
+					alert(
+						"🎵 Please add the song 'Ceilings' by Lizzy McAlpine to public/assets/ceilings-lizzy-mcalpine.mp3"
+					);
+				});
+				// isPlaying will be set to true by the play event listener
+			}
+		}
+	};
+
+	const handleVolumeChange = (e) => {
+		const volume = parseFloat(e.target.value);
+		setAudioVolume(volume);
+		if (audioRef.current) {
+			audioRef.current.volume = volume;
+		}
+	};
+
+	// Auto-play music when component mounts (with user interaction)
+	useEffect(() => {
+		// Since autoPlay is set to true, we need to handle the audio state
+		if (audioRef.current && audioFileExists) {
+			// Listen for when audio starts playing
+			const handlePlay = () => {
+				setIsPlaying(true);
+				setAutoplayAttempting(false);
+				setShowMusicNotification(true);
+				setTimeout(() => setShowMusicNotification(false), 3000);
+			};
+
+			// Listen for when audio fails to play
+			const handleError = () => {
+				setAutoplayAttempting(false);
+				setAudioFileExists(false);
+				console.log("Audio failed to load or play");
+			};
+
+			// Listen for when audio is paused
+			const handlePause = () => {
+				setIsPlaying(false);
+			};
+
+			// Add event listeners
+			audioRef.current.addEventListener("play", handlePlay);
+			audioRef.current.addEventListener("error", handleError);
+			audioRef.current.addEventListener("pause", handlePause);
+
+			// Check if audio is already playing (autoplay might have started)
+			if (audioRef.current.readyState >= 2) {
+				// HAVE_CURRENT_DATA or higher
+				setAutoplayAttempting(true);
+				// Give it a moment to start playing
+				setTimeout(() => {
+					if (audioRef.current && !audioRef.current.paused) {
+						handlePlay();
+					} else {
+						setAutoplayAttempting(false);
+						// Fallback to user interaction
+						setupUserInteractionAutoplay();
+					}
+				}, 1000);
+			}
+
+			// Cleanup event listeners
+			return () => {
+				if (audioRef.current) {
+					audioRef.current.removeEventListener("play", handlePlay);
+					audioRef.current.removeEventListener("error", handleError);
+					audioRef.current.removeEventListener("pause", handlePause);
+				}
+			};
+		}
+	}, [audioFileExists]);
+
+	// Setup user interaction autoplay fallback
+	const setupUserInteractionAutoplay = () => {
+		const handleFirstInteraction = () => {
+			if (audioRef.current && !isPlaying && audioFileExists) {
+				audioRef.current.play().catch((error) => {
+					console.log("Audio play failed:", error);
+					setAudioFileExists(false);
+				});
+				setIsPlaying(true);
+				setShowMusicNotification(true);
+				setTimeout(() => setShowMusicNotification(false), 3000);
+				document.removeEventListener("click", handleFirstInteraction);
+				document.removeEventListener("touchstart", handleFirstInteraction);
+				document.removeEventListener("keydown", handleFirstInteraction);
+			}
+		};
+
+		document.addEventListener("click", handleFirstInteraction);
+		document.addEventListener("touchstart", handleFirstInteraction);
+		document.addEventListener("keydown", handleFirstInteraction);
+
+		return () => {
+			document.removeEventListener("click", handleFirstInteraction);
+			document.removeEventListener("touchstart", handleFirstInteraction);
+			document.removeEventListener("keydown", handleFirstInteraction);
+		};
+	};
+
+	// Handle window resize to keep No button within bounds
+	useEffect(() => {
+		const handleResize = () => {
+			if (noButtonPosition.x > 0 || noButtonPosition.y > 0) {
+				const buttonWidth = 200;
+				const buttonHeight = 100;
+				const padding = 20;
+
+				const maxX = window.innerWidth - buttonWidth - padding;
+				const maxY = window.innerHeight - buttonHeight - padding;
+
+				const newX = Math.max(padding, Math.min(maxX, noButtonPosition.x));
+				const newY = Math.max(padding, Math.min(maxY, noButtonPosition.y));
+
+				if (newX !== noButtonPosition.x || newY !== noButtonPosition.y) {
+					setNoButtonPosition({ x: newX, y: newY });
+				}
+			}
+		};
+
+		window.addEventListener("resize", handleResize);
+		return () => window.removeEventListener("resize", handleResize);
+	}, [noButtonPosition]);
 
 	// Generate floating hearts
 	useEffect(() => {
@@ -96,8 +260,16 @@ export default function Home() {
 	}, [isModalOpen]);
 
 	const moveNoButton = () => {
-		const x = Math.random() * (window.innerWidth - 200);
-		const y = Math.random() * (window.innerHeight - 100);
+		const buttonWidth = 200;
+		const buttonHeight = 100;
+		const padding = 20;
+
+		const maxX = window.innerWidth - buttonWidth - padding;
+		const maxY = window.innerHeight - buttonHeight - padding;
+
+		const x = Math.max(padding, Math.min(maxX, Math.random() * maxX));
+		const y = Math.max(padding, Math.min(maxY, Math.random() * maxY));
+
 		setNoButtonPosition({ x, y });
 	};
 
@@ -251,6 +423,118 @@ export default function Home() {
 
 	return (
 		<main className="min-h-screen bg-gradient-to-br from-pink-100 via-purple-100 to-pink-200 relative overflow-hidden">
+			{/* Background Music */}
+			{/* 
+				To add "Ceilings" by Lizzy McAlpine:
+				1. Download the song from official sources
+				2. Rename to: ceilings-lizzy-mcalpine.mp3
+				3. Place in: public/assets/ceilings-lizzy-mcalpine.mp3
+				See MUSIC_SETUP.md for detailed instructions
+			*/}
+			<audio
+				ref={audioRef}
+				loop
+				preload="auto"
+				volume={audioVolume}
+				autoPlay={true}
+			>
+				<source
+					src="/assets/ceilings-lizzy-mcalpine.mp3"
+					type="audio/mpeg"
+				/>
+				<source
+					src="/assets/ceilings-lizzy-mcalpine.mp3"
+					type="audio/mp3"
+				/>
+				Your browser does not support the audio element.
+			</audio>
+
+			{/* Autoplay Indicator */}
+			{autoplayAttempting && (
+				<div className="fixed top-4 left-4 z-50 bg-gradient-to-r from-blue-500 to-purple-600 text-white px-4 py-2 rounded-full shadow-lg animate-pulse">
+					<div className="flex items-center gap-2">
+						<span className="text-sm animate-spin">⏳</span>
+						<span className="text-sm font-medium">Starting music...</span>
+					</div>
+				</div>
+			)}
+
+			{/* Music Controls */}
+			<div className="fixed top-4 right-4 z-50 bg-white/80 backdrop-blur-sm rounded-full p-3 shadow-lg border border-pink-200">
+				<div className="flex items-center gap-3">
+					<button
+						ref={playButtonRef}
+						onClick={toggleAudio}
+						className={`w-10 h-10 rounded-full flex items-center justify-center text-white hover:scale-110 transform transition-all duration-300 shadow-lg relative ${
+							audioFileExists
+								? "bg-gradient-to-r from-pink-500 to-purple-600"
+								: "bg-gradient-to-r from-gray-400 to-gray-600"
+						}`}
+					>
+						{!audioFileExists ? (
+							<span className="text-lg">⚠️</span>
+						) : autoplayAttempting ? (
+							<span className="text-lg animate-spin">⏳</span>
+						) : isPlaying ? (
+							<>
+								<span className="text-lg">⏸️</span>
+								{/* Animated music notes when playing */}
+								<div className="absolute -top-2 -right-2 text-xs animate-bounce">
+									🎵
+								</div>
+							</>
+						) : (
+							<span className="text-lg">🎵</span>
+						)}
+					</button>
+					{audioFileExists && (
+						<div className="flex items-center gap-2">
+							<span className="text-pink-600 text-sm">🔊</span>
+							<input
+								type="range"
+								min="0"
+								max="1"
+								step="0.1"
+								value={audioVolume}
+								onChange={handleVolumeChange}
+								className="w-16 h-2 bg-pink-200 rounded-lg appearance-none cursor-pointer slider"
+							/>
+						</div>
+					)}
+					{/* Music status indicator */}
+					{isPlaying && audioFileExists && (
+						<div className="flex items-center gap-1">
+							<div className="w-1 h-3 bg-pink-500 rounded-full animate-pulse"></div>
+							<div
+								className="w-1 h-5 bg-purple-500 rounded-full animate-pulse"
+								style={{ animationDelay: "0.2s" }}
+							></div>
+							<div
+								className="w-1 h-4 bg-pink-500 rounded-full animate-pulse"
+								style={{ animationDelay: "0.4s" }}
+							></div>
+						</div>
+					)}
+				</div>
+			</div>
+
+			{/* Music Notification */}
+			{isPlaying && (
+				<div className="fixed top-20 right-4 z-50 bg-gradient-to-r from-pink-500 to-purple-600 text-white px-6 py-3 rounded-full shadow-lg animate-bounce">
+					<div className="flex items-center gap-2">
+						<span className="text-xl">🎵</span>
+						<span className="font-semibold">
+							{!audioFileExists
+								? "Please add the song file! 📁"
+								: autoplayAttempting
+								? "Starting music... ⏳"
+								: '"Ceilings" by Lizzy McAlpine playing! 💕'}
+						</span>
+						<span className="text-xl">🎶</span>
+					</div>
+				</div>
+			)}
+
 			{/* Glitter Trail */}
 			{glitterTrail.map((glitter, index) => (
 				<div
@@ -320,6 +604,60 @@ export default function Home() {
 					💖
 				</div>
 			))}
+
+			{/* Floating Music Notes - Only when music is playing */}
+			{isPlaying && (
+				<>
+					<div
+						className="absolute text-purple-400 animate-float pointer-events-none"
+						style={{
+							left: "10%",
+							top: "20%",
+							fontSize: "24px",
+							animationDuration: "6s",
+							animationDelay: "0s",
+						}}
+					>
+						🎵
+					</div>
+					<div
+						className="absolute text-pink-400 animate-float pointer-events-none"
+						style={{
+							left: "80%",
+							top: "30%",
+							fontSize: "20px",
+							animationDuration: "7s",
+							animationDelay: "2s",
+						}}
+					>
+						🎶
+					</div>
+					<div
+						className="absolute text-purple-400 animate-float pointer-events-none"
+						style={{
+							left: "15%",
+							top: "70%",
+							fontSize: "18px",
+							animationDuration: "8s",
+							animationDelay: "4s",
+						}}
+					>
+						🎵
+					</div>
+					<div
+						className="absolute text-pink-400 animate-float pointer-events-none"
+						style={{
+							left: "85%",
+							top: "60%",
+							fontSize: "22px",
+							animationDuration: "5s",
+							animationDelay: "1s",
+						}}
+					>
+						🎶
+					</div>
+				</>
+			)}
 
 			{/* Super Playful Background Elements */}
 			<div className="absolute inset-0 pointer-events-none">
@@ -619,7 +957,7 @@ export default function Home() {
 							Yay! 🎉💕
 						</h2>
 						<p className="text-2xl text-purple-600 font-semibold animate-pulse">
-							I'm so happy! You've made me the luckiest person! 💖✨
+							I&apos;m so happy! You&apos;ve made me the luckiest person! 💖✨
 						</p>
 						<div className="flex justify-center gap-4 mt-6">
 							<div
@@ -762,9 +1100,11 @@ export default function Home() {
 						>
 							×
 						</button>
-						<img
+						<Image
 							src={selectedImage.src}
 							alt={selectedImage.alt}
+							width={800}
+							height={600}
 							className="max-w-full max-h-full object-contain rounded-lg"
 						/>
 						<div className="absolute inset-0 flex items-center justify-between p-4 pointer-events-none">
@@ -880,6 +1220,10 @@ export default function Home() {
 					animation: float 8s linear forwards;
 				}
 
+				.animate-sparkle {
+					animation: sparkle-bounce 1.5s ease-out forwards;
+				}
+
 				.animate-hover-float {
 					animation: hover-float 3s ease-out forwards;
 				}
@@ -890,6 +1234,40 @@ export default function Home() {
 
 				.animate-sparkle {
 					animation: sparkle-bounce 1.5s ease-out forwards;
+				}
+
+				/* Custom slider styles */
+				.slider::-webkit-slider-thumb {
+					appearance: none;
+					height: 16px;
+					width: 16px;
+					border-radius: 50%;
+					background: linear-gradient(45deg, #ff69b4, #ff1493);
+					cursor: pointer;
+					box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+				}
+
+				.slider::-moz-range-thumb {
+					height: 16px;
+					width: 16px;
+					border-radius: 50%;
+					background: linear-gradient(45deg, #ff69b4, #ff1493);
+					cursor: pointer;
+					border: none;
+					box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+				}
+
+				.slider::-webkit-slider-track {
+					background: linear-gradient(90deg, #ffb6c1, #ff69b4);
+					border-radius: 10px;
+					height: 8px;
+				}
+
+				.slider::-moz-range-track {
+					background: linear-gradient(90deg, #ffb6c1, #ff69b4);
+					border-radius: 10px;
+					height: 8px;
+					border: none;
 				}
 			`}</style>
 		</main>
